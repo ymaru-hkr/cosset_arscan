@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
-# 撮影画像 (live.py の保存先) と測定結果の出力
+# 手元の写真と測定結果の出力
 photo/
 measurement_*
+
+# 測定結果の出力先 (config.OUTPUT_ROOT)
+results/

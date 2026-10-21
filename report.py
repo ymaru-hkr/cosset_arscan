@@ -5,7 +5,7 @@ import cv2
 
 
 def save_files(output_dir, filename_base, output_lines, object_data, bird_eye_view_img):
-    """測定結果をTXT/PNG/CSVとしてoutput_dir配下に保存する。"""
+    """測定結果をTXT/PNG/CSVとしてoutput_dir配下に保存する。保存したCSVのパスを返す (無ければNone)。"""
     os.makedirs(output_dir, exist_ok=True)
 
     if not object_data:
@@ -24,7 +24,7 @@ def save_files(output_dir, filename_base, output_lines, object_data, bird_eye_vi
         print(f"エラー: レポートファイル '{txt_filename}' の書き込みに失敗しました: {e}")
 
     if not object_data:
-        return
+        return None
 
     img_filename = os.path.join(output_dir, f"{filename_base}.png")
     cv2.imwrite(img_filename, bird_eye_view_img)
@@ -40,3 +40,5 @@ def save_files(output_dir, filename_base, output_lines, object_data, bird_eye_vi
         print(f"測定データを '{csv_filename}' として保存しました。")
     except IOError as e:
         print(f"エラー: CSVファイル '{csv_filename}' の書き込みに失敗しました: {e}")
+        return None
+    return csv_filename

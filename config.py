@@ -49,11 +49,27 @@ MAX_HOLE_AREA_FACTOR = 1.0    # 物体内部の「幅^2 × この値」以下の
 WIDE_OBJECT_FACTOR = 1.8      # 幅がこれ以上太い物体は横並びの重なりを疑う
 PAIR_MAX_ANGLE_DEG = 40       # 交差点で枝どうしをつなぐときに許容する曲がり角
 
-# --- 画面表示 (live.py / main.py 共通) ---
+# --- 画面表示 (main.py / measure_image.py 共通) ---
 DISPLAY_SIZE = (800, 480)           # 画面サイズ (ラズパイ公式7インチディスプレイ)
 DISPLAY_FULLSCREEN = True
 
-# --- ライブプレビュー (live.py) ---
+# --- カメラ・ライブプレビュー (main.py) ---
 LIVE_CAMERA_INDEX = 0               # Picamera2が使えない場合に使うUSBカメラの番号
 LIVE_CAPTURE_SIZE = (1536, 864)     # プレビュー用の撮影解像度 (Camera Module 3 の16:9モード)
-LIVE_SAVE_DIR = "photo"             # 's' / SAVE で撮影した画像の保存先
+# 撮影用タクトスイッチをつなぐGPIO番号 (BCM)。スイッチの反対側はGNDへ。使わなければ None
+CAPTURE_BUTTON_GPIO = 17
+
+# --- 測定結果の出力先 ---
+# 結果は OUTPUT_ROOT/日付/時刻/ に保存する (相対パスはこのプロジェクトのフォルダ基準)
+OUTPUT_ROOT = "results"
+OUTPUT_DATE_FORMAT = "%Y-%m-%d"
+OUTPUT_TIME_FORMAT = "%H%M%S"
+
+# CSVをGoogle Driveにも保存する。どちらも None なら保存しない (両方設定すれば両方に保存)
+# Drive側も「日付/時刻_ファイル名.csv」で保存する
+# rcloneのリモート先。例: "gdrive:cossette/csv" (事前に `rclone config` でリモート "gdrive" を作成)
+GDRIVE_RCLONE_DEST = None
+# Google Driveと同期しているローカルフォルダ (Google Drive for desktop など)
+# 例: "~/Library/CloudStorage/GoogleDrive-xxxx@gmail.com/マイドライブ/cossette"
+GDRIVE_LOCAL_DIR = None
+GDRIVE_UPLOAD_TIMEOUT_SEC = 60

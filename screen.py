@@ -7,12 +7,16 @@ import numpy as np
 
 from config import DISPLAY_FULLSCREEN, DISPLAY_SIZE
 
+WINDOW_NAME = "Cossette"  # ライブプレビューと測定画面で同じウィンドウを使う
 BAR_HEIGHT = 56
 BUTTON_WIDTH = 90
 
 
 def open_window(name, on_button, buttons):
-    """ウィンドウを開き、ボタンが押されたら on_button(ボタン名) を呼ぶ。"""
+    """ウィンドウを開き、ボタンが押されたら on_button(ボタン名) を呼ぶ。
+
+    無効化中のボタンも on_button は呼ばれるので、呼び出し側で無視すること。
+    """
     cv2.namedWindow(name, cv2.WINDOW_NORMAL)
     if DISPLAY_FULLSCREEN:
         cv2.setWindowProperty(name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
@@ -38,8 +42,11 @@ def _button_rects(buttons):
     }
 
 
-def compose(image, status_text, status_color, sub_text, buttons):
-    """画像を画面サイズに収め、下部にステータス・補足・ボタンを描いた表示用画像を返す。"""
+def compose(image, status_text, status_color, sub_text, buttons, disabled=()):
+    """画像を画面サイズに収め、下部にステータス・補足・ボタンを描いた表示用画像を返す。
+
+    disabled に含まれるボタンはグレーで描く。
+    """
     w, h = DISPLAY_SIZE
     canvas = np.full((h, w, 3), 20, np.uint8)
 
@@ -53,8 +60,20 @@ def compose(image, status_text, status_color, sub_text, buttons):
     cv2.putText(canvas, status_text, (10, h - 30), font, 0.7, status_color, 2, cv2.LINE_AA)
     cv2.putText(canvas, sub_text, (10, h - 8), font, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
     for name, (x, y, bw, bh) in _button_rects(buttons).items():
-        cv2.rectangle(canvas, (x + 3, y + 4), (x + bw - 3, y + bh - 4), (70, 70, 70), -1)
+        enabled = name not in disabled
+        cv2.rectangle(canvas, (x + 3, y + 4), (x + bw - 3, y + bh - 4), (70, 70, 70) if enabled else (40, 40, 40), -1)
         (tw, th), _ = cv2.getTextSize(name, font, 0.7, 2)
         cv2.putText(canvas, name, (x + (bw - tw) // 2, y + (bh + th) // 2), font, 0.7,
-                    (255, 255, 255), 2, cv2.LINE_AA)
+                    (255, 255, 255) if enabled else (100, 100, 100), 2, cv2.LINE_AA)
     return canvas
+
+
+def wait_for_button(image, status_text, status_color, sub_text, buttons):
+    """画像とメッセージを表示し、いずれかのボタン（またはキー 'q' / Enter で最後のボタン）が押されるまで待つ。"""
+    pressed = []
+    open_window(WINDOW_NAME, pressed.append, buttons)
+    cv2.imshow(WINDOW_NAME, compose(image, status_text, status_color, sub_text, buttons))
+    while not pressed:
+        if (cv2.waitKey(50) & 0xFF) in (ord("q"), 13):
+            return buttons[-1]
+    return pressed[0]

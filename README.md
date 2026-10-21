@@ -39,11 +39,19 @@ Picamera2 が見つからない場合は、USBカメラ（`LIVE_CAMERA_INDEX` �
 
 ## 使い方
 
-### 1. ライブプレビューで並べる（`live.py`）
+普段は **`main.py` だけを起動しておきます**。並べる → 撮影 → 測定 → 保存を1つの画面で繰り返します。
 
 ```sh
-uv run python live.py
+uv run python main.py
 ```
+
+```
+[ライブプレビュー] ──SHOT──▶ [測定画面（しきい値の調整）] ──SAVE──▶ 保存・Driveへ送信
+       ▲                                │
+       └────────── 保存後 / BACK ────────┘
+```
+
+### 1. ライブプレビューで並べる
 
 カメラ映像に、重なっている箇所をリアルタイムで表示します。
 
@@ -53,31 +61,52 @@ uv run python live.py
 | 橙 | 交差点は無いが幅が太すぎる物体（横並びに重なっている疑い） |
 | `OK: no overlap` | 重なりなし |
 
-赤い部分が無くなるように並べ直してから **SAVE** を押すと、最大解像度の静止画を `photo/` に保存します。
+赤い部分が無くなるように並べ直してから **SHOT**（またはタクトスイッチ）を押すと、最大解像度の静止画を撮影して測定画面に移ります。
 
-### 2. 測定する（`main.py`）
+- プレビューは常に表示されますが、4つのARマーカーが読めていない間は **SHOT がグレーになり撮影できません**。
+- 撮影した静止画でもマーカーを再確認し、読めなければ測定画面に移りません（画面に `SHOT FAILED` と表示）。
 
-```sh
-uv run python main.py "photo/live_20261021_120000.jpg"
-```
+### 2. 測定画面で保存する
 
-画像を指定しないとファイル選択ダイアログが開きます。
-プレビュー画面で **- / +** を押してしきい値を調整し、検出がよければ **SAVE** で保存します。
-結果は、画像ファイル名と同じ名前のフォルダに保存されます。
+**- / +** でしきい値を調整し（ライブプレビューのしきい値が初期値になります）、検出がよければ **SAVE** で保存します。
+保存せずに撮り直すときは **BACK** を押します。どちらもライブプレビューに戻ります。
 
-- `measurement_<名前>.txt`: レポート（各オブジェクトの寸法と統計量）
-- `measurement_<名前>.csv`: オブジェクトごとの長辺・短辺・面積
-- `measurement_<名前>.png`: 検出結果の画像（赤: 50mm以上、青: 10mm未満、黄色の丸: 交差点）
+結果は `results/日付/時刻/` に保存されます（例: `results/2026-10-21/130818/`）。
+
+- `capture.jpg`: 撮影した元画像
+- `measurement_capture.txt`: レポート（各オブジェクトの寸法と統計量）
+- `measurement_capture.csv`: オブジェクトごとの長辺・短辺・面積
+- `measurement_capture.png`: 検出結果の画像（赤: 50mm以上、青: 10mm未満、黄色の丸: 交差点）
+
+CSVは、設定すれば Google Drive にも `日付/時刻_measurement_capture.csv` として保存されます（下記）。
 
 ### 操作
 
-どちらの画面も、画面下のボタン（タッチ操作可）またはキーで操作します。
+画面下のボタン（タッチ操作可）またはキーで操作します。
 
-| ボタン | キー | 動作 |
-|---|---|---|
-| `-` / `+` | `-` / `+` | しきい値を下げる / 上げる |
-| `SAVE` | `s` | 保存 |
-| `QUIT` | `q` | 終了 |
+| 画面 | ボタン | キー | 動作 |
+|---|---|---|---|
+| 共通 | `-` / `+` | `-` / `+` | しきい値を下げる / 上げる |
+| ライブ | `SHOT` | `s` / タクトスイッチ | 撮影して測定画面へ |
+| ライブ | `QUIT` | `q` | アプリを終了 |
+| 測定 | `SAVE` | `s` | 結果を保存してライブへ戻る |
+| 測定 | `BACK` | `q` | 保存せずにライブへ戻る |
+
+### タクトスイッチ
+
+スイッチの片側を GPIO17（`CAPTURE_BUTTON_GPIO`、BCM番号）、もう片側を GND につなぎます。内部プルアップを使うので抵抗は不要です。
+[gpiozero](https://gpiozero.readthedocs.io/) を使います（Raspberry Pi OS には標準で入っています。無ければ `sudo apt install python3-gpiozero`）。
+測定画面を表示している間は、スイッチは無視されます。
+
+### 保存済みの画像を測定する（`measure_image.py`）
+
+過去に撮影した写真の測定し直しや、PC での測定に使います。測定画面と保存先は `main.py` と同じです。
+
+```sh
+uv run python measure_image.py "results/2026-10-21/130818/capture.jpg"
+```
+
+画像を指定しないとファイル選択ダイアログが開きます。
 
 ## 設定（`config.py`）
 
@@ -91,8 +120,39 @@ uv run python main.py "photo/live_20261021_120000.jpg"
 | `HYSTERESIS_LOW_RATIO` | 濃い部分につながる薄い部分を、しきい値の何倍まで含めるか |
 | `DISPLAY_SIZE` / `DISPLAY_FULLSCREEN` | 画面サイズ・全画面表示（Macで試すときは `False` 推奨） |
 | `LIVE_CAPTURE_SIZE` | ライブプレビューの撮影解像度 |
+| `CAPTURE_BUTTON_GPIO` | 撮影用タクトスイッチの GPIO 番号（使わなければ `None`） |
+| `OUTPUT_ROOT` | 測定結果の保存先（相対パスはプロジェクトのフォルダ基準） |
+| `OUTPUT_DATE_FORMAT` / `OUTPUT_TIME_FORMAT` | 日付・時刻フォルダの名前の形式 |
+| `GDRIVE_RCLONE_DEST` / `GDRIVE_LOCAL_DIR` | CSVを保存する Google Drive の場所（下記） |
 
 交差分離のパラメータ（`*_FACTOR`）は、画像から自動推定したコセットの幅に対する倍率です。
+
+## Google Drive への CSV 保存
+
+`config.py` で次のどちらか（または両方）を設定します。どちらも `None` なら Drive には保存しません。
+アップロードに失敗しても、ローカルの結果はそのまま残り、警告が表示されるだけです。
+
+### 方法1: rclone（ラズパイ向け）
+
+```sh
+sudo apt install rclone          # Mac は brew install rclone
+rclone config                    # 「n」→ 名前を gdrive → 種類に drive を選び、画面の指示に従ってGoogleアカウントでログイン
+rclone lsd gdrive:               # Driveのフォルダ一覧が出れば設定完了
+```
+
+```python
+GDRIVE_RCLONE_DEST = "gdrive:cossette/csv"   # 「リモート名:Drive上のフォルダ」
+```
+
+ラズパイに画面とブラウザが無い場合は、`rclone config` の途中で表示される `rclone authorize "drive"` を、ブラウザのある PC で実行して得たトークンを貼り付けます。
+
+### 方法2: Driveと同期しているフォルダにコピー（Mac / Windows 向け）
+
+[Google Drive for desktop](https://www.google.com/drive/download/) を入れると、Drive がローカルのフォルダとして見えます。そのフォルダを指定します。
+
+```python
+GDRIVE_LOCAL_DIR = "~/Library/CloudStorage/GoogleDrive-xxxx@gmail.com/マイドライブ/cossette"
+```
 
 ## 処理の流れ
 
