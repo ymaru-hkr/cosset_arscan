@@ -2,10 +2,23 @@
 
 上部に画像、下部にステータスとボタンを並べる。ボタンはタッチ（クリック）で操作できる。
 """
+import functools
+import os
+
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
-from config import DISPLAY_FULLSCREEN, DISPLAY_SIZE
+from config import DISPLAY_FULLSCREEN, DISPLAY_SIZE, MESSAGE_FONT_PATH
+
+# 日本語メッセージ用フォントの候補（上から順に探す）
+_FONT_CANDIDATES = [
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",     # ラズパイ: sudo apt install fonts-noto-cjk
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
+    "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc",            # Mac
+    "C:/Windows/Fonts/meiryo.ttc",                              # Windows
+]
 
 WINDOW_NAME = "Cossette"  # ライブプレビューと測定画面で同じウィンドウを使う
 BAR_HEIGHT = 56
@@ -77,3 +90,46 @@ def wait_for_button(image, status_text, status_color, sub_text, buttons):
         if (cv2.waitKey(50) & 0xFF) in (ord("q"), 13):
             return buttons[-1]
     return pressed[0]
+
+
+@functools.lru_cache(maxsize=None)
+def _japanese_font(size):
+    """日本語フォントを読み込む。見つからなければ None（英語で表示する）。"""
+    for path in [MESSAGE_FONT_PATH] + _FONT_CANDIDATES:
+        if path and os.path.exists(path):
+            return ImageFont.truetype(path, size)
+    return None
+
+
+def draw_banner(canvas, lines_ja, lines_en, color):
+    """画像エリアの中央にメッセージの帯を描く。1行目は大きく、2行目以降は小さく描く。
+
+    日本語フォントが見つからない環境では lines_en を描く。color はBGR。
+    """
+    w, h = DISPLAY_SIZE
+    area_h = h - BAR_HEIGHT
+    band_h = 40 + 54 + 28 * (max(len(lines_ja), len(lines_en)) - 1)
+    y0 = (area_h - band_h) // 2
+    canvas[y0:y0 + band_h] = (canvas[y0:y0 + band_h] * 0.2).astype(np.uint8)
+    cv2.line(canvas, (0, y0), (w, y0), color, 3)
+    cv2.line(canvas, (0, y0 + band_h - 1), (w, y0 + band_h - 1), color, 3)
+
+    big, small = _japanese_font(40), _japanese_font(22)
+    if big is None:
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        for i, (text, scale) in enumerate(zip(lines_en, (1.1, 0.6, 0.6))):
+            (tw, _), _ = cv2.getTextSize(text, font, scale, 2)
+            cv2.putText(canvas, text, ((w - tw) // 2, y0 + 48 + i * 34), font, scale, color, 2, cv2.LINE_AA)
+        return canvas
+
+    image = Image.fromarray(canvas[:, :, ::-1])
+    draw = ImageDraw.Draw(image)
+    rgb = tuple(int(c) for c in color[::-1])
+    y = y0 + 12
+    for i, text in enumerate(lines_ja):
+        f = big if i == 0 else small
+        tw = draw.textlength(text, font=f)
+        draw.text(((w - tw) // 2, y), text, font=f, fill=rgb if i == 0 else (230, 230, 230))
+        y += 54 if i == 0 else 28
+    canvas[:] = np.asarray(image)[:, :, ::-1]
+    return canvas

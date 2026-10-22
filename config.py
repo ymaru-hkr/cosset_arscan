@@ -52,6 +52,8 @@ PAIR_MAX_ANGLE_DEG = 40       # 交差点で枝どうしをつなぐときに許
 # --- 画面表示 (main.py / measure_image.py 共通) ---
 DISPLAY_SIZE = (800, 480)           # 画面サイズ (ラズパイ公式7インチディスプレイ)
 DISPLAY_FULLSCREEN = True
+MESSAGE_SECONDS = 5                 # 撮影結果のメッセージを表示しておく秒数
+MESSAGE_FONT_PATH = None            # 日本語メッセージ用フォント。None なら自動で探す (無ければ英語表示)
 
 # --- カメラ・ライブプレビュー (main.py) ---
 # 使うカメラ: "auto" (カメラモジュールがあればPicamera2、無ければUSBカメラ) / "picamera2" / "opencv"

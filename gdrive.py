@@ -32,7 +32,13 @@ def _upload_with_rclone(csv_path, remote_path):
 
 
 def save_csv_to_gdrive(csv_path, timestamp):
-    """CSVを設定されたGoogle Driveの保存先に「日付/時刻_ファイル名」で保存する。"""
+    """CSVを設定されたGoogle Driveの保存先に「日付/時刻_ファイル名」で保存する。
+
+    戻り値: 保存先が未設定なら None、すべて成功なら True、1つでも失敗したら False
+    """
+    if not GDRIVE_LOCAL_DIR and not GDRIVE_RCLONE_DEST:
+        return None
+    ok = True
     date_dir = timestamp.strftime(OUTPUT_DATE_FORMAT)
     file_name = f"{timestamp.strftime(OUTPUT_TIME_FORMAT)}_{os.path.basename(csv_path)}"
 
@@ -44,11 +50,14 @@ def save_csv_to_gdrive(csv_path, timestamp):
             print(f"CSVをGoogle Driveフォルダ '{dest_dir}' にも保存しました。")
         except OSError as e:
             print(f"警告: Google DriveフォルダへのCSV保存に失敗しました: {e}")
+            ok = False
 
     if GDRIVE_RCLONE_DEST:
         remote_path = f"{GDRIVE_RCLONE_DEST.rstrip('/')}/{date_dir}/{file_name}"
         error = _upload_with_rclone(csv_path, remote_path)
         if error:
             print(f"警告: Google DriveへのCSVアップロードに失敗しました ({remote_path}): {error}")
+            ok = False
         else:
             print(f"CSVをGoogle Drive '{remote_path}' にアップロードしました。")
+    return ok

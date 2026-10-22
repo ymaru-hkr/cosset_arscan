@@ -5,14 +5,12 @@ from screen import WINDOW_NAME, compose, open_window
 
 
 def run_interactive_measurement(gray_image_masked, base_bird_eye_view, mm_per_pixel,
-                                 file_name_with_ext, timestamp, initial_threshold, cancel_label="QUIT"):
-    """1枚のウィンドウで測定結果のプレビューとしきい値調整を行い、SAVE/キャンセル操作を待つ。
-
-    cancel_label: 保存せずに戻るボタンの名前（カメラから測定する場合は "BACK"）
+                                 file_name_with_ext, timestamp, initial_threshold):
+    """1枚のウィンドウで測定結果のプレビューとしきい値調整を行い、SAVE/QUIT操作を待つ。
 
     戻り値: (saved, output_lines, object_data, bird_eye_view_img)
     """
-    buttons = ["-", "+", "SAVE", cancel_label]
+    buttons = ["-", "+", "SAVE", "QUIT"]
     state = {'threshold': initial_threshold, 'action': None}
     latest = {}
 
@@ -38,12 +36,12 @@ def run_interactive_measurement(gray_image_masked, base_bird_eye_view, mm_per_pi
     print("\nプレビュー画面で操作できます:")
     print("  '-' / '+' ボタン (キー '-' / '+') でしきい値を調整します。")
     print("  SAVE ボタン ('s' キー) で現在の状態で結果を保存します。")
-    print(f"  {cancel_label} ボタン ('q' キー) で保存せずに戻ります。")
+    print("  QUIT ボタン ('q' キー) で保存せずに終了します。")
 
     saved = False
     while True:
         key = cv2.waitKey(20) & 0xFF
-        action = {ord('-'): '-', ord('+'): '+', ord('='): '+', ord('s'): 'SAVE', ord('q'): cancel_label}.get(key)
+        action = {ord('-'): '-', ord('+'): '+', ord('='): '+', ord('s'): 'SAVE', ord('q'): 'QUIT'}.get(key)
         action, state['action'] = action or state['action'], None
 
         if action in ('-', '+'):
@@ -54,8 +52,8 @@ def run_interactive_measurement(gray_image_masked, base_bird_eye_view, mm_per_pi
             print("\nSAVEが押されました。ファイルを保存します...")
             saved = True
             break
-        elif action == cancel_label:
-            print(f"\n{cancel_label}が押されました。ファイルを保存せずに戻ります。")
+        elif action == 'QUIT':
+            print("\nQUITが押されました。ファイルを保存せずに終了します。")
             break
 
     return (

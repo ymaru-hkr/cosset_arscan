@@ -3,30 +3,33 @@
 1. ライブプレビュー: 重なり・交差している箇所をリアルタイムに表示する
      赤: 交差している物体（丸印が交差点）
      橙: 交差点は無いが幅が太すぎる物体（横並びに重なっている疑い）
+   しきい値はここで調整する（測定にもこのしきい値を使う）
 2. SHOT ボタン・タクトスイッチ・'s' キーのいずれかで高解像度の静止画を撮影する
    （4つのARマーカーが読めていないときは撮影できない）
-3. 測定画面でしきい値を調整し、SAVE で results/日付/時刻/ に保存（BACK で保存せずに戻る）
-4. ライブプレビューに戻る
+3. 今のしきい値で自動で測定し、results/日付/時刻/ に保存する（CSVはGoogle Driveにも送る）
+4. すぐにライブプレビューに戻り、結果のメッセージを数秒表示する
 
 操作: 画面下のボタン、またはキー '-' / '+' (しきい値), 's' (撮影), 'q' (終了)
 保存済みの画像を測定するときは measure_image.py を使う。
 """
 import os
+import threading
 import time
 
 import cv2
 import numpy as np
 
 from camera import open_camera
-from config import CAPTURE_BUTTON_GPIO, DEFAULT_THRESHOLD
+from config import CAPTURE_BUTTON_GPIO, DEFAULT_THRESHOLD, MESSAGE_SECONDS
 from crossing import separate_strips
 from marker_detection import detect_and_transform
-from measure_image import measure_frame
+from gdrive import save_csv_to_gdrive
+from measure_image import measure_and_save
 from measurement import binarize, preprocess_backlit
-from screen import WINDOW_NAME, compose, open_window
+from screen import WINDOW_NAME, compose, draw_banner, open_window
 
 BUTTONS = ["-", "+", "SHOT", "QUIT"]
-MESSAGE_SECONDS = 3  # 保存結果のメッセージを表示しておく秒数
+THRESHOLD_STEP = 2
 
 CROSSING_COLOR = (0, 0, 255)
 WIDE_COLOR = (0, 140, 255)
@@ -55,19 +58,40 @@ def _open_capture_switch(on_press):
     return switch
 
 
-def _shoot_and_measure(camera, threshold_val):
-    """静止画を撮影して測定画面に移る。戻り値: (ステータス文字列, ステータス色)"""
-    frame = camera.capture_still()
-    if frame is None or not detect_and_transform(frame.copy()).success:
-        print("撮影した静止画でARマーカーが読めなかったため、測定できませんでした。")
-        return "SHOT FAILED: markers not found", (0, 0, 255)
+def _show_message(state, lines_ja, lines_en, color):
+    """プレビュー画面にメッセージを MESSAGE_SECONDS 秒表示させる。"""
+    state["message"] = (lines_ja, lines_en, color, time.monotonic() + MESSAGE_SECONDS)
 
-    output_dir = measure_frame(frame, "capture.jpg", cancel_label="BACK",
-                               save_original=True, initial_threshold=threshold_val)
-    if output_dir is None:
-        return "NOT SAVED", (0, 200, 255)
+
+def _upload_in_background(state, csv_path, timestamp):
+    """CSVをGoogle Driveに送る。時間がかかることがあるので別スレッドで行い、失敗したら画面に表示する。"""
+    lines_ja, lines_en, _, _ = state["message"]
+
+    def run():
+        if save_csv_to_gdrive(csv_path, timestamp) is False:
+            # 「撮影しました」を消さずに、失敗したことを書き足す
+            _show_message(state, lines_ja + ["※ Google Driveへの送信に失敗しました"],
+                          lines_en + ["Google Drive upload failed"], (0, 165, 255))
+    threading.Thread(target=run, daemon=True).start()
+
+
+def _shoot_and_measure(camera, state):
+    """静止画を撮影し、今のしきい値で自動で測定・保存して、結果のメッセージを設定する。"""
+    frame = camera.capture_still()
+    measured = measure_and_save(frame, "capture.jpg", state["threshold"]) if frame is not None else None
+    if measured is None:
+        print("撮影した静止画でARマーカーが読めなかったため、保存しませんでした。")
+        _show_message(state, ["マーカーが読めませんでした", "保存していません。もう一度撮影してください"],
+                      ["Markers not found", "not saved - please shoot again"], (0, 0, 255))
+        return
+
+    output_dir, n_objects, csv_path, timestamp = measured
     # 表示は「日付/時刻」だけにする
-    return f"SAVED {os.path.relpath(output_dir, os.path.dirname(os.path.dirname(output_dir)))}", (0, 220, 0)
+    saved_as = os.path.relpath(output_dir, os.path.dirname(os.path.dirname(output_dir)))
+    _show_message(state, ["撮影しました", f"{saved_as} に保存  ({n_objects}個を測定)"],
+                  ["Saved", f"{saved_as}  ({n_objects} objects)"], (0, 220, 0))
+    if csv_path:
+        _upload_in_background(state, csv_path, timestamp)
 
 
 def analyze_frame(frame, threshold_val):
@@ -92,17 +116,16 @@ def analyze_frame(frame, threshold_val):
 
 def main():
     camera = open_camera()
-    state = {"threshold": DEFAULT_THRESHOLD, "action": None, "message": None}
+    state = {"threshold": DEFAULT_THRESHOLD, "action": None, "message": None, "busy": False}
 
     def on_button(name):
         state["action"] = name
 
     def on_switch():
-        # 測定画面を表示している間のスイッチ操作は無視する
-        if not state["measuring"]:
+        # 撮影・保存中のスイッチ操作は無視する
+        if not state["busy"]:
             on_button("SHOT")
 
-    state["measuring"] = False
     open_window(WINDOW_NAME, on_button, BUTTONS)
     switch = _open_capture_switch(on_switch)
 
@@ -114,32 +137,32 @@ def main():
                 break
 
             view, status, color, can_shoot = analyze_frame(frame, state["threshold"])
+            canvas = compose(view, status, color, f"threshold {state['threshold']}", BUTTONS,
+                             disabled=() if can_shoot else ("SHOT",))
             message = state["message"]
-            if message and time.monotonic() < message[2]:
-                status, color = message[0], message[1]
-            cv2.imshow(WINDOW_NAME, compose(
-                view, status, color, f"threshold {state['threshold']}", BUTTONS,
-                disabled=() if can_shoot else ("SHOT",)
-            ))
+            if message and time.monotonic() < message[3]:
+                cv2.imshow(WINDOW_NAME, draw_banner(canvas.copy(), *message[:3]))
+            else:
+                cv2.imshow(WINDOW_NAME, canvas)
 
             key = cv2.waitKey(1) & 0xFF
             action = {ord("-"): "-", ord("+"): "+", ord("="): "+", ord("s"): "SHOT", ord("q"): "QUIT"}.get(key)
             action, state["action"] = action or state["action"], None
 
             if action == "-":
-                state["threshold"] = max(state["threshold"] - 5, 0)
+                state["threshold"] = max(state["threshold"] - THRESHOLD_STEP, 0)
             elif action == "+":
-                state["threshold"] = min(state["threshold"] + 5, 255)
+                state["threshold"] = min(state["threshold"] + THRESHOLD_STEP, 255)
             elif action == "SHOT":
                 if not can_shoot:
                     print("ARマーカーが読めていないため撮影できません。")
                     continue
-                state["measuring"] = True
-                status, color = _shoot_and_measure(camera, state["threshold"])
-                state["measuring"] = False
-                state["message"] = (status, color, time.monotonic() + MESSAGE_SECONDS)
-                # 測定画面がボタンの割り当てを変えているので、ライブプレビュー用に戻す
-                open_window(WINDOW_NAME, on_button, BUTTONS)
+                state["busy"] = True
+                # 撮影・測定には数秒かかるので、その間も分かるように表示しておく
+                cv2.imshow(WINDOW_NAME, draw_banner(canvas, ["撮影中..."], ["Shooting..."], (255, 255, 255)))
+                cv2.waitKey(1)
+                _shoot_and_measure(camera, state)
+                state["busy"] = False
                 state["action"] = None
             elif action == "QUIT":
                 break

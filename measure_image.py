@@ -1,7 +1,7 @@
 """保存済みの画像ファイル（静止画）を測定する補助ツール。
 
 過去に撮影した写真の測定し直しや、PCでの測定に使う。普段は main.py（カメラ）を使う。
-測定の流れ (measure_frame) は main.py からも使う。
+測定画面でしきい値を調整してから保存する。自動測定 (measure_and_save) は main.py から使う。
 
 使い方: uv run python measure_image.py [画像ファイル]
   画像ファイルを省略するとファイル選択ダイアログが開く。
@@ -16,7 +16,7 @@ from config import DEFAULT_THRESHOLD, OUTPUT_DATE_FORMAT, OUTPUT_ROOT, OUTPUT_TI
 from gdrive import save_csv_to_gdrive
 from image_io import load_image, select_image_path
 from marker_detection import detect_and_transform
-from measurement import preprocess_backlit
+from measurement import preprocess_backlit, process_frame
 from report import save_files
 from screen import wait_for_button
 from ui import run_interactive_measurement
@@ -30,42 +30,74 @@ def make_output_dir(timestamp):
     return os.path.join(root, timestamp.strftime(OUTPUT_DATE_FORMAT), timestamp.strftime(OUTPUT_TIME_FORMAT))
 
 
-def measure_frame(frame, file_name, cancel_label="QUIT", save_original=False, initial_threshold=DEFAULT_THRESHOLD):
-    """画像を測定し、測定画面でしきい値を調整する。SAVEが押されたら結果を保存する。
-
-    結果は OUTPUT_ROOT/日付/時刻/ に保存し、CSVは設定に応じてGoogle Driveにも保存する。
-    file_name はレポートに記録する入力ファイル名（出力ファイル名にも使う）。
-    save_original=True なら元画像も同じフォルダに file_name で保存する（カメラで撮影した画像用）。
-    戻り値: 保存したフォルダのパス。保存しなかった場合は None
-    """
-    original = frame.copy() if save_original else None
-    timestamp = datetime.datetime.now()
-    output_dir = make_output_dir(timestamp)
-    filename_base = f"measurement_{os.path.splitext(file_name)[0]}"
-
+def _prepare(frame):
+    """マーカーを検出して鳥瞰図と前処理済み画像を作る。マーカーが読めなければ None。"""
     result = detect_and_transform(frame)
     if not result.success:
-        print("\nエラー: 4つのコーナーマーカーが認識されていません。測定できません。")
-        wait_for_button(frame, "MARKERS NOT FOUND", (0, 0, 255), "cannot measure this image", [cancel_label])
         return None
-
     gray_image = cv2.cvtColor(result.bird_eye_view, cv2.COLOR_BGR2GRAY)
-    gray_image_masked = preprocess_backlit(gray_image, result.ar_marker_mask)
+    return result, preprocess_backlit(gray_image, result.ar_marker_mask)
 
-    saved, output_lines, object_data, bird_eye_view_img = run_interactive_measurement(
-        gray_image_masked, result.bird_eye_view, result.mm_per_pixel,
-        file_name, timestamp, initial_threshold, cancel_label
-    )
-    if not saved:
-        return None
 
+def _save(output_dir, file_name, output_lines, object_data, bird_eye_view_img, original):
+    """結果を output_dir に保存する。original があれば元画像も file_name で保存する。戻り値: CSVのパス"""
     print(f"結果を'{output_dir}'フォルダに保存します。")
+    filename_base = f"measurement_{os.path.splitext(file_name)[0]}"
     csv_path = save_files(output_dir, filename_base, output_lines, object_data, bird_eye_view_img)
     if original is not None:
         original_path = os.path.join(output_dir, file_name)
         # 日本語パスにも対応するためエンコードしてから書き込む
         cv2.imencode(".jpg", original)[1].tofile(original_path)
         print(f"元画像を '{original_path}' として保存しました。")
+    return csv_path
+
+
+def measure_and_save(frame, file_name, threshold_val):
+    """指定したしきい値で自動で測定し、元画像とともに保存する（カメラで撮影した画像用）。
+
+    CSVのGoogle Driveへの保存は時間がかかることがあるので、呼び出し側で行う。
+    戻り値: (保存先フォルダ, 測定した物体の数, CSVのパス, タイムスタンプ)。マーカーが読めなければ None
+    """
+    original = frame.copy()
+    prepared = _prepare(frame)
+    if prepared is None:
+        return None
+    result, gray_image_masked = prepared
+
+    timestamp = datetime.datetime.now()
+    output_lines, object_data, bird_eye_view_img = process_frame(
+        gray_image_masked, result.bird_eye_view, result.mm_per_pixel,
+        threshold_val, file_name, timestamp
+    )
+    output_dir = make_output_dir(timestamp)
+    csv_path = _save(output_dir, file_name, output_lines, object_data, bird_eye_view_img, original)
+    return output_dir, len(object_data), csv_path, timestamp
+
+
+def measure_frame(frame, file_name):
+    """画像を測定し、測定画面でしきい値を調整する。SAVEが押されたら結果を保存する。
+
+    結果は OUTPUT_ROOT/日付/時刻/ に保存し、CSVは設定に応じてGoogle Driveにも保存する。
+    file_name はレポートに記録する入力ファイル名（出力ファイル名にも使う）。
+    戻り値: 保存したフォルダのパス。保存しなかった場合は None
+    """
+    prepared = _prepare(frame)
+    if prepared is None:
+        print("\nエラー: 4つのコーナーマーカーが認識されていません。測定できません。")
+        wait_for_button(frame, "MARKERS NOT FOUND", (0, 0, 255), "cannot measure this image", ["QUIT"])
+        return None
+    result, gray_image_masked = prepared
+
+    timestamp = datetime.datetime.now()
+    saved, output_lines, object_data, bird_eye_view_img = run_interactive_measurement(
+        gray_image_masked, result.bird_eye_view, result.mm_per_pixel,
+        file_name, timestamp, DEFAULT_THRESHOLD
+    )
+    if not saved:
+        return None
+
+    output_dir = make_output_dir(timestamp)
+    csv_path = _save(output_dir, file_name, output_lines, object_data, bird_eye_view_img, None)
     if csv_path:
         save_csv_to_gdrive(csv_path, timestamp)
     return output_dir
