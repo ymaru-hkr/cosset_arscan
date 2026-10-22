@@ -17,12 +17,8 @@ import time
 import cv2
 import numpy as np
 
-from config import (
-    CAPTURE_BUTTON_GPIO,
-    DEFAULT_THRESHOLD,
-    LIVE_CAMERA_INDEX,
-    LIVE_CAPTURE_SIZE,
-)
+from camera import open_camera
+from config import CAPTURE_BUTTON_GPIO, DEFAULT_THRESHOLD
 from crossing import separate_strips
 from marker_detection import detect_and_transform
 from measure_image import measure_frame
@@ -34,51 +30,6 @@ MESSAGE_SECONDS = 3  # 保存結果のメッセージを表示しておく秒数
 
 CROSSING_COLOR = (0, 0, 255)
 WIDE_COLOR = (0, 140, 255)
-
-
-class Camera:
-    """ラズパイのカメラ (Picamera2) を優先し、無ければOpenCVのVideoCaptureを使う。"""
-
-    def __init__(self):
-        try:
-            from picamera2 import Picamera2
-        except ImportError:
-            Picamera2 = None
-
-        if Picamera2 is not None:
-            self._picam = Picamera2()
-            # "RGB888" はメモリ上BGR順なのでOpenCVでそのまま扱える
-            self._preview_config = self._picam.create_preview_configuration(
-                main={"size": LIVE_CAPTURE_SIZE, "format": "RGB888"})
-            self._still_config = self._picam.create_still_configuration(main={"format": "RGB888"})
-            self._picam.configure(self._preview_config)
-            self._picam.start()
-            self._cap = None
-        else:
-            self._picam = None
-            self._cap = cv2.VideoCapture(LIVE_CAMERA_INDEX)
-            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, LIVE_CAPTURE_SIZE[0])
-            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, LIVE_CAPTURE_SIZE[1])
-            if not self._cap.isOpened():
-                raise IOError(f"カメラ {LIVE_CAMERA_INDEX} を開けませんでした。")
-
-    def read(self):
-        if self._picam is not None:
-            return self._picam.capture_array()
-        ok, frame = self._cap.read()
-        return frame if ok else None
-
-    def capture_still(self):
-        """測定用に最大解像度の静止画を撮影する。"""
-        if self._picam is not None:
-            return self._picam.switch_mode_and_capture_array(self._still_config)
-        return self.read()
-
-    def close(self):
-        if self._picam is not None:
-            self._picam.stop()
-        else:
-            self._cap.release()
 
 
 def _annotate(bird_eye_view, separation):
@@ -140,7 +91,7 @@ def analyze_frame(frame, threshold_val):
 
 
 def main():
-    camera = Camera()
+    camera = open_camera()
     state = {"threshold": DEFAULT_THRESHOLD, "action": None, "message": None}
 
     def on_button(name):

@@ -54,8 +54,11 @@ DISPLAY_SIZE = (800, 480)           # 画面サイズ (ラズパイ公式7イン
 DISPLAY_FULLSCREEN = True
 
 # --- カメラ・ライブプレビュー (main.py) ---
-LIVE_CAMERA_INDEX = 0               # Picamera2が使えない場合に使うUSBカメラの番号
-LIVE_CAPTURE_SIZE = (1536, 864)     # プレビュー用の撮影解像度 (Camera Module 3 の16:9モード)
+# 使うカメラ: "auto" (カメラモジュールがあればPicamera2、無ければUSBカメラ) / "picamera2" / "opencv"
+CAMERA_BACKEND = "auto"
+LIVE_CAMERA_INDEX = None            # USBカメラの番号 (/dev/videoN の N)。None なら自動で探す
+LIVE_CAPTURE_SIZE = (1536, 864)     # プレビュー用の解像度 (対応していなければ近い解像度になる)
+USB_STILL_SIZE = (4096, 2160)       # USBカメラで撮影するときの解像度 (対応していなければ近い解像度になる)
 # 撮影用タクトスイッチをつなぐGPIO番号 (BCM)。スイッチの反対側はGNDへ。使わなければ None
 CAPTURE_BUTTON_GPIO = 17
 

@@ -35,7 +35,27 @@ uv sync
 > **注意:** このプロジェクトは Python 3.12 以上が必要です。Raspberry Pi OS Bookworm の Python は 3.11 なので、Python 3.12 以上を搭載した OS（Debian 13 / Trixie ベース）を使ってください。
 > ラズパイでのこの手順は未検証です。
 
-Picamera2 が見つからない場合は、USBカメラ（`LIVE_CAMERA_INDEX` 番）を使います。
+### カメラ
+
+ラズパイ用カメラモジュール（CSI）と USB カメラのどちらでも使えます。`CAMERA_BACKEND = "auto"`（初期値）なら自動で選びます。
+
+| つないでいるカメラ | 使われる方式 | 撮影（SHOT）の解像度 |
+|---|---|---|
+| カメラモジュール | Picamera2 | センサーの最大解像度 |
+| USB カメラ | OpenCV | `USB_STILL_SIZE`（初期値 4096×2160。対応していなければ近い解像度） |
+| 両方 | カメラモジュールを優先 | |
+
+USB カメラの番号は自動で探します（ラズパイ5では `/dev/video0` が USB カメラとは限らないため）。うまく見つからないときは `LIVE_CAMERA_INDEX` に `/dev/videoN` の N を指定してください。
+
+### 画面
+
+ウィンドウはラズパイのデスクトップに表示します。SSH から起動するときは表示先を指定してください（デスクトップにログインしている必要があります）。
+
+```sh
+DISPLAY=:0 uv run python main.py
+```
+
+`could not connect to display` と出る場合は、これが原因です。Raspberry Pi OS Lite（デスクトップなし）では表示できません。
 
 ## 使い方
 
@@ -119,7 +139,10 @@ uv run python measure_image.py "results/2026-10-21/130818/capture.jpg"
 | `DEFAULT_THRESHOLD` | 二値化しきい値の初期値 |
 | `HYSTERESIS_LOW_RATIO` | 濃い部分につながる薄い部分を、しきい値の何倍まで含めるか |
 | `DISPLAY_SIZE` / `DISPLAY_FULLSCREEN` | 画面サイズ・全画面表示（Macで試すときは `False` 推奨） |
-| `LIVE_CAPTURE_SIZE` | ライブプレビューの撮影解像度 |
+| `CAMERA_BACKEND` | 使うカメラ: `"auto"` / `"picamera2"` / `"opencv"` |
+| `LIVE_CAMERA_INDEX` | USB カメラの番号（`None` なら自動） |
+| `LIVE_CAPTURE_SIZE` | ライブプレビューの解像度 |
+| `USB_STILL_SIZE` | USB カメラで撮影するときの解像度 |
 | `CAPTURE_BUTTON_GPIO` | 撮影用タクトスイッチの GPIO 番号（使わなければ `None`） |
 | `OUTPUT_ROOT` | 測定結果の保存先（相対パスはプロジェクトのフォルダ基準） |
 | `OUTPUT_DATE_FORMAT` / `OUTPUT_TIME_FORMAT` | 日付・時刻フォルダの名前の形式 |
