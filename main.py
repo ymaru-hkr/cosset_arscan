@@ -23,7 +23,7 @@ from camera import open_camera
 from config import CAPTURE_BUTTON_GPIO, DEFAULT_THRESHOLD, MESSAGE_SECONDS
 from crossing import separate_strips
 from marker_detection import detect_and_transform
-from gdrive import save_csv_to_gdrive
+from gdrive import gdrive_enabled, save_csv_to_gdrive
 from measure_image import measure_and_save
 from measurement import binarize, preprocess_backlit
 from screen import WINDOW_NAME, compose, draw_banner, open_window
@@ -64,12 +64,16 @@ def _show_message(state, lines_ja, lines_en, color):
 
 
 def _upload_in_background(state, csv_path, timestamp):
-    """CSVをGoogle Driveに送る。時間がかかることがあるので別スレッドで行い、失敗したら画面に表示する。"""
-    lines_ja, lines_en, _, _ = state["message"]
+    """CSVをGoogle Driveに送る。時間がかかることがあるので別スレッドで行い、結果を画面の表示に書き足す。"""
+    lines_ja, lines_en, color, _ = state["message"]
+    # 送信が終わるまでは「送信中」と表示し、終わったら結果に置き換える
+    _show_message(state, lines_ja + ["Google Driveに送信中..."], lines_en + ["Uploading to Google Drive..."], color)
 
     def run():
-        if save_csv_to_gdrive(csv_path, timestamp) is False:
-            # 「撮影しました」を消さずに、失敗したことを書き足す
+        if save_csv_to_gdrive(csv_path, timestamp):
+            _show_message(state, lines_ja + ["Google Driveにも保存しました"],
+                          lines_en + ["Also saved to Google Drive"], color)
+        else:
             _show_message(state, lines_ja + ["※ Google Driveへの送信に失敗しました"],
                           lines_en + ["Google Drive upload failed"], (0, 165, 255))
     threading.Thread(target=run, daemon=True).start()
@@ -90,7 +94,7 @@ def _shoot_and_measure(camera, state):
     saved_as = os.path.relpath(output_dir, os.path.dirname(os.path.dirname(output_dir)))
     _show_message(state, ["撮影しました", f"{saved_as} に保存  ({n_objects}個を測定)"],
                   ["Saved", f"{saved_as}  ({n_objects} objects)"], (0, 220, 0))
-    if csv_path:
+    if csv_path and gdrive_enabled():
         _upload_in_background(state, csv_path, timestamp)
 
 

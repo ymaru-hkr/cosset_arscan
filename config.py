@@ -71,9 +71,9 @@ OUTPUT_DATE_FORMAT = "%Y-%m-%d"
 OUTPUT_TIME_FORMAT = "%H%M%S"
 
 # CSVをGoogle Driveにも保存する。どちらも None なら保存しない (両方設定すれば両方に保存)
-# Drive側も「日付/時刻_ファイル名.csv」で保存する
+# Drive側はフォルダ分けせず「日付_時刻_ファイル名.csv」で保存先の直下に置く
 # rcloneのリモート先。例: "gdrive:cossette/csv" (事前に `rclone config` でリモート "gdrive" を作成)
-GDRIVE_RCLONE_DEST = None
+GDRIVE_RCLONE_DEST = "gdrive:Raspi/cossset"
 # Google Driveと同期しているローカルフォルダ (Google Drive for desktop など)
 # 例: "~/Library/CloudStorage/GoogleDrive-xxxx@gmail.com/マイドライブ/cossette"
 GDRIVE_LOCAL_DIR = None
