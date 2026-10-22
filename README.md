@@ -23,17 +23,25 @@ uv sync
 
 ### ラズパイの場合
 
-カメラモジュールは Picamera2 経由で使います。Picamera2 は pip ではなくシステムのパッケージで入れ、システムの Python で作った仮想環境から見えるようにします。
+Picamera2（カメラモジュール）・gpiozero / lgpio（タクトスイッチ）は pip ではなくシステムのパッケージで入れ、**システムの Python で作った仮想環境から見えるようにします**。
 
 ```sh
-sudo apt install python3-picamera2
-uv python pin /usr/bin/python3
+sudo apt install python3-picamera2 python3-gpiozero python3-lgpio fonts-noto-cjk
 uv venv --python /usr/bin/python3 --system-site-packages
 uv sync
 ```
 
-> **注意:** このプロジェクトは Python 3.12 以上が必要です。Raspberry Pi OS Bookworm の Python は 3.11 なので、Python 3.12 以上を搭載した OS（Debian 13 / Trixie ベース）を使ってください。
-> ラズパイでのこの手順は未検証です。
+正しく設定できたかは次で確認できます（`GPIO OK` と出れば成功）。
+
+```sh
+grep include-system-site-packages .venv/pyvenv.cfg   # true になっていること
+uv run python -c "from gpiozero import Button; Button(17); print('GPIO OK')"
+```
+
+> **注意:**
+> - `.python-version` はラズパイ（Raspberry Pi OS Trixie）のシステム Python に合わせて `3.13` にしています。ここがシステムの Python と食い違うと、`uv sync` が uv 管理の Python で仮想環境を作り直し、システムのパッケージ（Picamera2・gpiozero）が見えなくなります。
+> - 起動時にターミナルに `タクトスイッチ: 無効 (...)` と出たら、上の確認コマンドを試してください。
+> - Raspberry Pi OS Bookworm の Python は 3.11 なので使えません（Python 3.12 以上が必要）。
 
 ### カメラ
 
@@ -116,11 +124,7 @@ CSVは、設定すれば Google Drive にも保存されます（下記）。Dri
 
 ### 日本語の表示
 
-画面のメッセージは日本語フォントで表示します。ラズパイでは次のフォントを入れてください（無い場合は英語で表示されます）。
-
-```sh
-sudo apt install fonts-noto-cjk
-```
+画面のメッセージは日本語フォントで表示します。ラズパイでは `fonts-noto-cjk` を入れてください（セットアップの手順に含まれています。無い場合は英語で表示されます）。
 
 ### タクトスイッチ
 

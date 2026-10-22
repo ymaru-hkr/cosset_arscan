@@ -46,15 +46,23 @@ def _annotate(bird_eye_view, separation):
 
 
 def _open_capture_switch(on_press):
-    """タクトスイッチ (GPIO) を開く。gpiozero が無い環境 (Macなど) や未設定なら何もしない。"""
+    """タクトスイッチ (GPIO) を開く。使えない環境 (Macなど) や未設定なら理由を表示して None を返す。"""
     if CAPTURE_BUTTON_GPIO is None:
+        print("タクトスイッチ: 無効 (CAPTURE_BUTTON_GPIO = None)")
         return None
     try:
         from gpiozero import Button
     except ImportError:
+        print("タクトスイッチ: 無効 (gpiozero を読み込めません。README の「タクトスイッチ」を参照)")
         return None
-    switch = Button(CAPTURE_BUTTON_GPIO, pull_up=True, bounce_time=0.05)
+    try:
+        switch = Button(CAPTURE_BUTTON_GPIO, pull_up=True, bounce_time=0.05)
+    except Exception as e:
+        # ピンの制御ライブラリ (lgpio など) が無い・GPIOが使用中などの場合
+        print(f"タクトスイッチ: 無効 (GPIO{CAPTURE_BUTTON_GPIO} を開けません: {type(e).__name__}: {e})")
+        return None
     switch.when_pressed = on_press
+    print(f"タクトスイッチ: GPIO{CAPTURE_BUTTON_GPIO} で待機中")
     return switch
 
 
